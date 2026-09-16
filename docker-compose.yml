@@ -1,0 +1,27 @@
+name: service-desk
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: service_desk
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    ports:
+      - "5433:5432" # 5433 on the host, so it can run next to an existing local Postgres on 5432
+    volumes:
+      # Runs every .sql/.sh in db/init, in name order, on first start with an empty volume.
+      # After changing those files: docker compose down -v; docker compose up -d
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # TCP only opens after the init scripts finish, so "healthy" means the schema is ready.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U postgres -d service_desk"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
