@@ -23,5 +23,19 @@ services:
       timeout: 3s
       retries: 30
 
+    # Database tests in a separate, throwaway Postgres (no ports, no saved data).
+  # Only runs when asked:  docker compose run --rm db-tests
+  db-tests:
+    image: postgres:17-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_DB: service_desk
+      POSTGRES_HOST_AUTH_METHOD: trust
+      APP_DB_PASSWORD: test-only
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./db/tests:/tests:ro
+    command: ["sh", "/tests/run_all.sh"]
+
 volumes:
   pgdata:
