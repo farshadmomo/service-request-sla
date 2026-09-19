@@ -1,0 +1,195 @@
+{
+  "name": "Service Request - SLA Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        -32
+      ],
+      "id": "78e15a62-7a4b-451e-94d2-5804fe53e99d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "efc9ce02-cb82-4393-9818-ce725c36e178",
+              "leftValue": "={{ $json.sla_status }}",
+              "rightValue": "BREACHED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        304,
+        -32
+      ],
+      "id": "491056a6-8bc0-4d5d-8717-199aca34949f",
+      "name": "Breached?"
+    },
+    {
+      "parameters": {
+        "fromEmail": "service-desk@example.com",
+        "toEmail": "automation-team@example.com",
+        "subject": "=AT RISK: {{ $json.request_id }} — {{ $json.title }}",
+        "emailFormat": "text",
+        "text": "={{ $json.request_id }} is due within the next 24 hours.\n\nTitle:      {{ $json.title }}\nDepartment: {{ $json.department }}\nPriority:   {{ $json.priority }}\nAssignee:   {{ $json.assignee || 'Unassigned' }}\nDue:        {{ $json.due_tehran }} (Tehran)",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        96
+      ],
+      "id": "29342e7c-792a-481d-8ec4-8eea8b28064d",
+      "name": "Warn automation team",
+      "webhookId": "2be84e3f-142d-4c41-8680-ac1bd12ae0bc",
+      "retryOnFail": true,
+      "credentials": {
+        "smtp": {
+          "id": "fQ3BmSTOONew5ole",
+          "name": "Mailpit (local SMTP)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "service-desk@example.com",
+        "toEmail": "automation-lead@example.com",
+        "subject": "= SLA BREACHED: {{ $json.request_id }} — {{ $json.title }}",
+        "emailFormat": "text",
+        "text": "={{ $json.request_id }} has missed its SLA and needs attention now.\n\nTitle:      {{ $json.title }}\nDepartment: {{ $json.department }}\nPriority:   {{ $json.priority }}\nAssignee:   {{ $json.assignee || 'Unassigned' }}\nDue:        {{ $json.due_tehran }} (Tehran)",
+        "options": {
+          "appendAttribution": false,
+          "ccEmail": "automation-team@example.com"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        512,
+        -128
+      ],
+      "id": "11b399b7-87d6-4e28-bf4e-f56b95b208d7",
+      "name": "Escalate to team lead",
+      "webhookId": "d606c68a-a4e0-4fea-8603-a064b18b4ec4",
+      "retryOnFail": true,
+      "credentials": {
+        "smtp": {
+          "id": "fQ3BmSTOONew5ole",
+          "name": "Mailpit (local SMTP)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT e.*, to_char(e.due_at AT TIME ZONE 'Asia/Tehran', 'Dy DD Mon YYYY HH24:MI') AS due_tehran\nFROM mark_sla_events() e;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        96,
+        -32
+      ],
+      "id": "c7011076-413f-45d1-8bb1-f6e5e39464ed",
+      "name": "Mark SLA events",
+      "credentials": {
+        "postgres": {
+          "id": "jQZEwMYdRGui2EKd",
+          "name": "service_desk"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Mark SLA events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Breached?": {
+      "main": [
+        [
+          {
+            "node": "Escalate to team lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Warn automation team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark SLA events": {
+      "main": [
+        [
+          {
+            "node": "Breached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "ro7p1B8LkI34V65Y"
+  },
+  "versionId": "c03cc489-206f-4e83-89b4-4af2c728fc0c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2910196119f2a3a048c3f4f37fc70c67a249ba9df130a9cf059184340657b52"
+  },
+  "id": "cs5HozjykzllYRdv",
+  "tags": []
+}

@@ -1,0 +1,345 @@
+{
+  "name": "Service Request - Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "service-request",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        -32
+      ],
+      "id": "80cf1528-6574-47f9-8c28-e3b3973000dc",
+      "name": "Webhook",
+      "webhookId": "01f61ae9-e849-48cd-8da3-804894bdd53a",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wClsbgvODWWX4zBw",
+          "name": "service_desk webhook key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Validates one submitted request (Code node, mode: Run Once for Each Item).\n// Returns the cleaned-up fields plus `valid` and `errors`, so the next node can branch.\n// Limits match the CHECK constraints in db/init/02_schema.sql.\nconst DEPARTMENTS = ['Finance', 'IT', 'HR', 'Operations', 'Sales', 'Legal'];\nconst PRIORITIES  = ['P1', 'P2', 'P3', 'P4'];\n\nconst body = $json.body ?? {};\nconst text = (value) => (typeof value === 'string' ? value.trim() : '');\n\nconst request = {\n  requester_name:    text(body.requester_name),\n  requester_email:   text(body.requester_email).toLowerCase(),\n  department:        text(body.department),\n  title:             text(body.title),\n  description:       text(body.description),\n  declared_priority: text(body.declared_priority).toUpperCase(),\n};\n\nconst errors = [];\n// [...s].length counts characters the same way Postgres char_length() does.\nconst checkLength = (field, min, max) => {\n  const length = [...request[field]].length;\n  if (length < min || length > max) {\n    errors.push({ field, message: `must be between ${min} and ${max} characters` });\n  }\n};\n\ncheckLength('requester_name', 2, 100);\nif (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(request.requester_email)) {\n  errors.push({ field: 'requester_email', message: 'must be a valid email address' });\n}\nif (!DEPARTMENTS.includes(request.department)) {\n  errors.push({ field: 'department', message: `must be one of: ${DEPARTMENTS.join(', ')}` });\n}\ncheckLength('title', 5, 150);\ncheckLength('description', 10, 5000);\nif (!PRIORITIES.includes(request.declared_priority)) {\n  errors.push({ field: 'declared_priority', message: `must be one of: ${PRIORITIES.join(', ')}` });\n}\n\nreturn { json: { valid: errors.length === 0, errors, request } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -32
+      ],
+      "id": "6e2a515c-173f-48f9-8301-7ce7f52e84c5",
+      "name": "Validate input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1336a32-e9c5-4b00-ba42-56587232b856",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        320,
+        -32
+      ],
+      "id": "8d0033a8-789e-4742-b5ae-313b8e1d501a",
+      "name": "Is valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: 'validation_failed', errors: $json.errors } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        528,
+        64
+      ],
+      "id": "a8612523-78d7-4d97-9063-131563553aab",
+      "name": "Respond 400"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Picks a category from keywords in the title and description (Code node, Run Once for Each Item).\n// Rules are checked top to bottom and the first match wins; nothing matches -> 'Other'.\n// A keyword matches the start of a whole word, so 'report' also matches 'reports' and\n// 'reporting', but 'role' does not match 'control'.\n// ponytail: keyword rules; swap in an AI classifier node if free-text accuracy ever matters.\nconst RULES = [\n  { category: 'Access Request', keywords: ['access', 'permission', 'login', 'password', 'role'] },\n  { category: 'New Automation', keywords: ['automat', 'workflow', 'bot'] },\n  { category: 'Data Fix',       keywords: ['fix', 'wrong', 'incorrect', 'correct', 'missing', 'duplicate'] },\n  { category: 'Report Request', keywords: ['report', 'dashboard', 'export', 'kpi', 'chart'] },\n];\n\nconst request = $json.request;\n\nconst words = `${request.title} ${request.description}`\n  .toLowerCase()\n  .split(/[^a-z0-9]+/)\n  .filter(Boolean);\n\nconst rule = RULES.find((r) => r.keywords.some((k) => words.some((w) => w.startsWith(k))));\n\nreturn { json: { ...request, category: rule ? rule.category : 'Other' } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -128
+      ],
+      "id": "a4eaa28b-e46c-4c8f-b3f3-c4ae1c55856c",
+      "name": "Classify request"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT create_service_request($1, $2, $3, $4, $5, $6, $7) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $json.requester_name, $json.requester_email, $json.department, $json.title, $json.description, $json.declared_priority, $json.category ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        736,
+        -128
+      ],
+      "id": "c0414892-b34d-4264-adb0-6ce68acced1a",
+      "name": "Save request",
+      "credentials": {
+        "postgres": {
+          "id": "jQZEwMYdRGui2EKd",
+          "name": "service_desk"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6f6af120-6816-4481-8331-643e4510102c",
+              "leftValue": "={{ $json.result.created }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        -128
+      ],
+      "id": "b9b29fd2-aae6-4470-9cfb-99af11c6f153",
+      "name": "Created?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.result }}",
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1152,
+        -224
+      ],
+      "id": "d2afee30-aab1-4870-a16c-5aaac677e640",
+      "name": "Respond 201"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: 'duplicate_request', message: 'You already have an open request with this title.', request_id: $json.result.request_id, status: $json.result.status, due_at: $json.result.due_at } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1152,
+        -32
+      ],
+      "id": "92b341e7-3847-482d-8b2f-163f91356a1b",
+      "name": "Respond 409"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: 'server_error', message: 'Your request could not be saved right now. Please try again in a few minutes.' } }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        992,
+        144
+      ],
+      "id": "938e8694-f4fb-4267-b64c-42353531ff52",
+      "name": "Respond 500"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Saving request failed: {{ $json.message || $json.error }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        144
+      ],
+      "id": "97b7e8eb-4a20-4ad1-a098-4b02dfd3d498",
+      "name": "Stop and Error"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate input": {
+      "main": [
+        [
+          {
+            "node": "Is valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is valid?": {
+      "main": [
+        [
+          {
+            "node": "Classify request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify request": {
+      "main": [
+        [
+          {
+            "node": "Save request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save request": {
+      "main": [
+        [
+          {
+            "node": "Created?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Created?": {
+      "main": [
+        [
+          {
+            "node": "Respond 201",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 409",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 500": {
+      "main": [
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "ro7p1B8LkI34V65Y"
+  },
+  "versionId": "7e8f49ab-723a-4217-9056-1abb8bcb8a93",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2910196119f2a3a048c3f4f37fc70c67a249ba9df130a9cf059184340657b52"
+  },
+  "id": "7gwua86VWCgzQbMk",
+  "tags": []
+}

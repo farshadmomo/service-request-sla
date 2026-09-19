@@ -1,0 +1,64 @@
+{
+  "name": "Service Request - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -64
+      ],
+      "id": "1cfe39ec-d9ab-46e3-9f5a-c331ba926e9c",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_error_log (workflow_name, node_name, error_message, execution_id, execution_url)\nVALUES ($1, $2, $3, $4, $5);",
+        "options": {
+          "queryReplacement": "={{ [ $json.workflow.name, $json.execution.lastNodeExecuted, $json.execution.error.message, $json.execution.id, $json.execution.url ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        32,
+        -64
+      ],
+      "id": "8b763b25-7498-4a98-9ca3-1bd37e3ea104",
+      "name": "Log error",
+      "credentials": {
+        "postgres": {
+          "id": "jQZEwMYdRGui2EKd",
+          "name": "service_desk"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c3e4477a-b086-463f-83c4-ac0702327352",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2910196119f2a3a048c3f4f37fc70c67a249ba9df130a9cf059184340657b52"
+  },
+  "id": "ro7p1B8LkI34V65Y",
+  "tags": []
+}

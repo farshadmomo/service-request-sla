@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
     ports:
-      - "5433:5432" # 5433 on the host, so it can run next to an existing local Postgres on 5432
+      - "5433:5432"  # 5433 on the host, so it can run next to an existing local Postgres on 5432
     volumes:
       # Runs every .sql/.sh in db/init, in name order, on first start with an empty volume.
       # After changing those files: docker compose down -v; docker compose up -d
@@ -29,19 +29,54 @@ services:
     image: axllent/mailpit
     restart: unless-stopped
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # web inbox
-    # Database tests in a separate, throwaway Postgres (no ports, no saved data).
-  # Only runs when asked:  docker compose run --rm db-tests
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # web inbox
 
+  # One-shot setup before n8n starts: on the first start it imports the credentials (built
+  # from .env) and the workflows in n8n/workflows, then exits. See n8n/import.sh.
+  n8n-import:
+    image: n8nio/n8n:1.123.4
+    entrypoint: ["/bin/sh", "/import/import.sh"]
+    environment:
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?set N8N_WEBHOOK_SECRET in .env}
+    volumes:
+      - ./n8n:/import:ro
+      - n8n-data:/home/node/.n8n
+
+  # Editor and webhooks: http://localhost:5678   Its credentials reach the other services by name.
+  n8n:
+    image: n8nio/n8n:1.123.4
+    restart: unless-stopped
+    environment:
+      GENERIC_TIMEZONE: Asia/Tehran
+      TZ: Asia/Tehran
+      N8N_EDITOR_BASE_URL: http://localhost:5678  # links to failed runs in workflow_error_log
+      N8N_DIAGNOSTICS_ENABLED: "false"            # no usage data sent out
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      n8n-import:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  # Free Community Edition. On the compose network, so its datasources use the hosts
+  # "postgres" (port 5432) and "n8n" (http://n8n:5678/webhook).
   appsmith:
     image: appsmith/appsmith-ce
     restart: unless-stopped
+    environment:
+      APPSMITH_DISABLE_TELEMETRY: "true"  # no usage data sent out
     ports:
       - "80:80"
     volumes:
       - appsmith-stacks:/appsmith-stacks
 
+  # Database tests in a separate, throwaway Postgres (no ports, no saved data).
+  # Only runs when asked:  docker compose run --rm db-tests
   db-tests:
     image: postgres:17-alpine
     profiles: [test]
@@ -56,4 +91,5 @@ services:
 
 volumes:
   pgdata:
+  n8n-data:
   appsmith-stacks:
