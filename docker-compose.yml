@@ -33,6 +33,15 @@ services:
       - "8025:8025" # web inbox
     # Database tests in a separate, throwaway Postgres (no ports, no saved data).
   # Only runs when asked:  docker compose run --rm db-tests
+
+  appsmith:
+    image: appsmith/appsmith-ce
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - appsmith-stacks:/appsmith-stacks
+
   db-tests:
     image: postgres:17-alpine
     profiles: [test]
@@ -47,3 +56,4 @@ services:
 
 volumes:
   pgdata:
+  appsmith-stacks:
