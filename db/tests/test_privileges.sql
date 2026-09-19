@@ -24,6 +24,11 @@ BEGIN
   ASSERT (SELECT status FROM v_request_queue WHERE request_id = a->>'request_id') = 'In Progress',
     'svc_app should read the queue view';
 
+  INSERT INTO workflow_error_log (workflow_name, node_name, error_message)
+  VALUES ('Privilege test', 'Save request', 'test error');
+  ASSERT (SELECT count(*) FROM workflow_error_log WHERE workflow_name = 'Privilege test') = 1,
+    'svc_app should add and read error log entries';
+
   -- Refused
   -- Checked directly as well: a direct INSERT would also fail on the ID sequence,
   -- which would hide an INSERT permission granted by mistake.
@@ -53,6 +58,12 @@ BEGIN
   BEGIN
     TRUNCATE service_request;
     RAISE EXCEPTION 'TRUNCATE was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    DELETE FROM workflow_error_log;
+    RAISE EXCEPTION 'deleting error log entries was allowed';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 
