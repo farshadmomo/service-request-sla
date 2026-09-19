@@ -16,6 +16,7 @@ run() { psql -q -h localhost -U postgres -d service_desk -v ON_ERROR_STOP=1 "$@"
 
 run -f /tests/test_sla.sql
 run -f /tests/test_requests.sql
+run -f /tests/test_sla_events.sql
 run -f /tests/test_privileges.sql
 
 # 20 identical submissions at the same moment must create exactly one request.

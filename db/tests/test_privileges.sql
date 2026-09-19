@@ -29,6 +29,8 @@ BEGIN
   ASSERT (SELECT count(*) FROM workflow_error_log WHERE workflow_name = 'Privilege test') = 1,
     'svc_app should add and read error log entries';
 
+  PERFORM mark_sla_events();
+
   -- Refused
   -- Checked directly as well: a direct INSERT would also fail on the ID sequence,
   -- which would hide an INSERT permission granted by mistake.
