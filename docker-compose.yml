@@ -23,6 +23,14 @@ services:
       timeout: 3s
       retries: 30
 
+  # Catches every email n8n sends, so SLA notifications can be seen without a real mail server.
+  # Inbox: http://localhost:8025   In production, point the n8n SMTP credential at the company server.
+  mailpit:
+    image: axllent/mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web inbox
     # Database tests in a separate, throwaway Postgres (no ports, no saved data).
   # Only runs when asked:  docker compose run --rm db-tests
   db-tests:
