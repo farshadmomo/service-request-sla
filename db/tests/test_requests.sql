@@ -1,5 +1,5 @@
--- Tests for create_service_request, the duplicate rule, the update trigger and v_request_queue.
--- Everything runs inside BEGIN ... ROLLBACK, so no test data is left behind.
+-- tests for create_service_request, duplicates, the trigger and the queue view
+-- all rolled back at the end
 BEGIN;
 
 DO $$
@@ -11,8 +11,8 @@ DECLARE
   t1 text;
   t2 text;
 BEGIN
-  -- Create
-  a := create_service_request('Sara Ahmadi', '  Sara@Example.com ', 'Finance',
+  -- create
+  a :=create_service_request('Sara Ahmadi', '  Sara@Example.com ', 'Finance',
          'Monthly  sales report', 'Need the monthly sales report by region.', 'P3', 'Report Request');
   ASSERT (a->>'created')::boolean, 'first submission should be created';
   ASSERT a->>'request_id' ~ '^REQ-\d{4}-\d{6}$', format('bad request_id: %s', a->>'request_id');
@@ -20,25 +20,25 @@ BEGIN
   ASSERT r.requester_email = 'sara@example.com', 'email should be stored trimmed and lower-case';
   ASSERT r.due_at = sla_due_at(r.created_at, 'P3'), 'due_at should come from the SLA function';
 
-  -- Duplicate: same requester, title differs only in case / spacing / punctuation
+  -- duplicate, only case/spaces/punctuation are different
   b := create_service_request('Sara A.', 'sara@example.com', 'Finance',
          'monthly sales report!', 'Another description here.', 'P1', 'Report Request');
   ASSERT NOT (b->>'created')::boolean, 'duplicate should not be created';
   ASSERT b->>'request_id' = a->>'request_id', 'duplicate should return the original request_id';
 
-  -- Same title from a different requester is not a duplicate
+  -- same title from someone else is not a duplicate
   b := create_service_request('Reza Karimi', 'reza@example.com', 'IT',
          'Monthly sales report', 'Need the monthly sales report too.', 'P3', 'Report Request');
   ASSERT (b->>'created')::boolean, 'same title from another requester should be created';
 
-  -- Once the original is closed, the same title can be submitted again
+  -- after closing it, the same title can be sent again
   UPDATE service_request SET status = 'Resolved' WHERE request_id = a->>'request_id';
   b := create_service_request('Sara Ahmadi', 'sara@example.com', 'Finance',
          'Monthly sales report', 'Need it again for next month.', 'P3', 'Report Request');
   ASSERT (b->>'created')::boolean AND b->>'request_id' <> a->>'request_id',
     'resubmission after closing should create a new request';
 
-  -- Persian: Arabic yeh/kaf and half-space vs. space are the same title
+  -- persian: arabic yeh/kaf and half-space should give the same title
   t1 := 'اصلاح داده' || U&'\200C' || 'های مشتری کرمان';
   t2 := translate(replace(t1, U&'\200C', ' '), U&'\06CC\06A9', U&'\064A\0643');
   ASSERT t1 <> t2, 'test setup: the two variants should differ byte-wise';
@@ -46,12 +46,12 @@ BEGIN
   b := create_service_request('Ali Rezaei', 'ali@example.com', 'HR', t2, 'Customer records need fixing.', 'P2', 'Data Fix');
   ASSERT (a->>'created')::boolean AND NOT (b->>'created')::boolean,
     'Persian keyboard variants should count as duplicates';
-  -- ...but a genuinely different Persian title is not
+  -- a different persian title should not match
   b := create_service_request('Ali Rezaei', 'ali@example.com', 'HR',
          'اصلاح داده' || U&'\200C' || 'های فروش تهران', 'Sales records need fixing.', 'P2', 'Data Fix');
   ASSERT (b->>'created')::boolean, 'different Persian titles must not collide';
 
-  -- Bad input fails cleanly: an error is raised and nothing is written
+  -- bad input -> error and nothing saved
   SELECT count(*) INTO n FROM service_request;
   BEGIN
     PERFORM create_service_request('Bad Email', 'not-an-email', 'Finance', 'Valid title', 'Valid description.', 'P2', 'Other');
@@ -75,13 +75,13 @@ BEGIN
   END;
   ASSERT (SELECT count(*) FROM service_request) = n, 'failed submissions must not write rows';
 
-  -- Changing priority recomputes due_at
+  -- changing priority changes due_at
   SELECT * INTO r FROM service_request WHERE request_id = a->>'request_id';
   UPDATE service_request SET priority = 'P1' WHERE request_id = r.request_id;
   ASSERT (SELECT due_at FROM service_request WHERE request_id = r.request_id) = r.created_at + interval '4 hours',
     'changing priority should recompute due_at';
 
-  -- resolved_at is managed by the trigger, not by clients
+  -- resolved_at comes from the trigger, not the client
   UPDATE service_request SET status = 'Completed' WHERE request_id = r.request_id;
   ASSERT (SELECT resolved_at FROM service_request WHERE request_id = r.request_id) IS NOT NULL,
     'closing should set resolved_at';
@@ -90,7 +90,7 @@ BEGIN
   ASSERT (SELECT resolved_at FROM service_request WHERE request_id = r.request_id) IS NULL,
     'reopening should clear resolved_at and ignore the value sent';
 
-  -- Queue view SLA states
+  -- sla states in the view
   INSERT INTO service_request (requester_name, requester_email, department, title, description,
                                category, declared_priority, priority, created_at)
   VALUES

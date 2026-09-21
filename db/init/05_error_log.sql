@@ -1,6 +1,6 @@
--- Failures recorded by the n8n error workflow, one row per failed run.
--- Runs after 04_app_role.sh, so svc_app already exists.
--- The app may add and read entries, but not change or delete them.
+-- failed n8n runs, written by the error workflow
+-- needs svc_app, so it runs after 04_app_role.sh
+-- svc_app can insert and read, not update or delete
 CREATE TABLE workflow_error_log (
   id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   occurred_at   timestamptz NOT NULL DEFAULT now(),

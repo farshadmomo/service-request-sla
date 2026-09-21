@@ -1,7 +1,6 @@
--- Called every few minutes by the SLA monitor workflow.
--- Stamps open requests that have just become AT RISK (warned_at) or BREACHED (escalated_at)
--- and returns them, so the workflow can tell the team. Each request is reported at most once
--- per state. It is a single statement, so two overlapping runs can't report the same request twice.
+-- used by the sla monitor workflow (every 15 min)
+-- marks requests that just became at risk / breached and returns them for the emails
+-- each request comes back only once per state, and it's one statement so two runs can't overlap
 CREATE FUNCTION mark_sla_events()
 RETURNS TABLE (request_id text, sla_status text, title text, department text, priority text,
                assignee text, requester_email text, due_at timestamptz)

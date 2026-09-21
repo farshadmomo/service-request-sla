@@ -3,9 +3,9 @@
 # First start only: loads the credentials (built from .env) and the workflows in
 # n8n/workflows. After that it does nothing, so changes made in the n8n editor are never
 # overwritten. Start over: docker compose down -v
-# ponytail: n8n imports workflows switched off and its CLI can't switch them on in this version
-# (no version-history entry to point to), so Intake and SLA Monitor are activated once in the
-# editor. Doing it here would mean writing into n8n's internal tables, which breaks on upgrade.
+# Intake and SLA Monitor are then activated once in the editor: in this n8n version the CLI
+# can't activate an imported workflow (it has no version history yet), and doing it here would
+# mean writing into n8n's internal tables, which breaks on upgrade.
 set -e
 marker=/home/node/.n8n/.service-desk-imported
 if [ -f "$marker" ]; then

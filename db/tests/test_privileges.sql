@@ -1,6 +1,5 @@
--- The app user (svc_app) can do its job and nothing more.
--- Run as the admin: SET LOCAL ROLE acts as svc_app until the ROLLBACK at the end,
--- which also removes the test data.
+-- svc_app should only be able to do what the app needs
+-- runs as svc_app (SET LOCAL ROLE) and everything is rolled back at the end
 BEGIN;
 SET LOCAL ROLE svc_app;
 
@@ -10,8 +9,8 @@ DECLARE
 BEGIN
   ASSERT current_user = 'svc_app', format('expected to run as svc_app, not %s', current_user);
 
-  -- Allowed
-  a := create_service_request('Priv Test', 'priv@example.com', 'Legal',
+  -- allowed
+  a :=create_service_request('Priv Test', 'priv@example.com', 'Legal',
          'Privilege check request', 'Created through the function.', 'P2', 'Other');
   ASSERT (a->>'created')::boolean, 'svc_app should create requests through the function';
 
@@ -31,9 +30,9 @@ BEGIN
 
   PERFORM mark_sla_events();
 
-  -- Refused
-  -- Checked directly as well: a direct INSERT would also fail on the ID sequence,
-  -- which would hide an INSERT permission granted by mistake.
+  -- not allowed
+  -- checking the privilege directly too, a direct insert also fails on the sequence
+  -- so it would hide a wrong insert grant
   ASSERT NOT has_table_privilege('svc_app', 'service_request', 'INSERT'),
     'svc_app must not have INSERT on service_request';
 

@@ -1,8 +1,7 @@
--- SLA due date for a request.
---   P1     = created_at + 4 clock hours (weekends don't matter)
---   P2..P4 = 1 / 3 / 5 business days (Mon-Fri), due at 17:00 Tehran time
---            on the Nth business day after the Tehran-local creation date.
--- Tehran has had no daylight saving time since 2022, so it is always UTC+03:30.
+-- due date for a request
+-- P1: created + 4 hours, weekends included
+-- P2/P3/P4: 1/3/5 business days (mon-fri) after the created date, due 17:00 tehran time
+-- tehran has no DST since 2022 so it's always +03:30
 CREATE OR REPLACE FUNCTION sla_due_at(p_created_at timestamptz, p_priority text)
 RETURNS timestamptz
 LANGUAGE plpgsql
@@ -23,7 +22,7 @@ BEGIN
 
   WHILE days_left > 0 LOOP
     d := d + 1;
-    IF extract(isodow FROM d) < 6 THEN  -- isodow: 1 = Mon ... 6 = Sat, 7 = Sun
+    IF extract(isodow FROM d) < 6 THEN  -- 6 = sat, 7 = sun
       days_left := days_left - 1;
     END IF;
   END LOOP;
@@ -31,11 +30,9 @@ BEGIN
   RETURN (d + time '17:00') AT TIME ZONE tz;
 END $$;
 
--- Title used to detect duplicates. Two titles count as the same when they only differ in
---   * upper/lower case
---   * spaces and punctuation ("Monthly  sales report!" = "monthly sales report")
---   * Persian keyboard variants: Arabic yeh/kaf vs Persian yeh/kaf,
---     and the half-space (zero-width non-joiner) vs a normal space
+-- title used for the duplicate check
+-- ignores case, extra spaces and punctuation ("Monthly  sales report!" = "monthly sales report")
+-- arabic/persian yeh and kaf count as the same letter, half-space counts as a space
 CREATE OR REPLACE FUNCTION normalize_title(p_title text)
 RETURNS text
 LANGUAGE sql
@@ -48,8 +45,8 @@ RETURN btrim(
 );
 
 
--- The one place that decides which statuses count as "still open".
--- Used by the duplicate rule, the SLA indicator and the update trigger.
+-- open = not completed, resolved or cancelled
+-- used by the duplicate index, the sla view and the trigger
 CREATE OR REPLACE FUNCTION request_is_open(p_status text)
 RETURNS boolean
 LANGUAGE sql

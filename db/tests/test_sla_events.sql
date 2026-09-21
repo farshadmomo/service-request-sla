@@ -1,5 +1,5 @@
--- Tests for mark_sla_events: each open request is reported once when it becomes AT RISK
--- and once when it becomes BREACHED. Runs inside BEGIN ... ROLLBACK, like the other tests.
+-- mark_sla_events: one report when at risk, one when breached, never twice
+-- rolled back at the end
 BEGIN;
 
 DO $$
@@ -19,12 +19,12 @@ BEGIN
   closed   := create_service_request('Sweep Test', 'sweep@example.com', 'IT',
                 'Sweep closed late', 'Completed after its due date.', 'P2', 'Other');
 
-  -- due_at is generated from created_at, so moving created_at back moves the due date too.
+  -- moving created_at back moves due_at too (generated column)
   UPDATE service_request SET created_at = now() - interval '10 days'
   WHERE request_id IN (breached->>'request_id', closed->>'request_id');
   UPDATE service_request SET status = 'Completed' WHERE request_id = closed->>'request_id';
 
-  -- First run: the at-risk and the breached request, nothing else
+  -- 1st run: only the at risk and the breached one
   SELECT jsonb_object_agg(e.request_id, e.sla_status) INTO got
   FROM mark_sla_events() e WHERE e.requester_email = 'sweep@example.com';
   ASSERT got = jsonb_build_object(at_risk->>'request_id', 'AT_RISK', breached->>'request_id', 'BREACHED'),
@@ -33,11 +33,11 @@ BEGIN
           FROM service_request WHERE request_id = at_risk->>'request_id'),
     'the at-risk request should get warned_at only';
 
-  -- Second run: already reported, so nothing new
+  -- 2nd run: nothing new
   ASSERT NOT EXISTS (SELECT FROM mark_sla_events() e WHERE e.requester_email = 'sweep@example.com'),
     'a request must not be reported twice for the same state';
 
-  -- The warned request later breaches: reported again, this time as BREACHED
+  -- the at risk one breaches later -> reported again as breached
   UPDATE service_request SET created_at = now() - interval '10 days'
   WHERE request_id = at_risk->>'request_id';
   SELECT jsonb_object_agg(e.request_id, e.sla_status) INTO got

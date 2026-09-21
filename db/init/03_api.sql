@@ -1,9 +1,8 @@
--- The only way n8n creates requests. One call = one transaction, so it either:
---   * inserts the request and returns it           (created = true)
---   * finds an open duplicate and returns that one (created = false)
---   * raises an error for bad input and writes nothing
--- SECURITY DEFINER: runs with the owner's rights, so the app user can create
--- requests through this function without having INSERT on the table.
+-- n8n creates requests only through this (one call = one transaction)
+-- new request -> created = true
+-- open duplicate -> returns the existing one, created = false
+-- bad input -> error, nothing saved
+-- security definer so svc_app doesn't need insert on the table
 CREATE OR REPLACE FUNCTION create_service_request(
   p_requester_name    text,
   p_requester_email   text,
@@ -12,7 +11,7 @@ CREATE OR REPLACE FUNCTION create_service_request(
   p_description       text,
   p_declared_priority text,
   p_category          text,
-  p_priority          text DEFAULT NULL  -- final priority if triage overrides the declared one
+  p_priority          text DEFAULT NULL  -- if the team sets a different priority
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -36,8 +35,7 @@ BEGIN
 
   IF NOT FOUND THEN
     created := false;
-    -- STRICT: if the duplicate was closed in the instant between the two
-    -- statements, raise an error instead of returning nothing; n8n can retry.
+    -- strict: error if the duplicate got closed in between, instead of returning nothing
     SELECT * INTO STRICT r
     FROM service_request s
     WHERE s.requester_email = lower(btrim(p_requester_email))
@@ -56,11 +54,10 @@ BEGIN
   );
 END $$;
 
--- The Automation team's queue: every request plus its SLA state.
--- The state is calculated when the view is read, because it changes with the clock:
---   BREACHED  due time has passed (closed requests: they were closed late)
---   AT_RISK   still open and due within the next 24 hours
---   ON_TRACK  everything else (closed requests: they were closed on time)
+-- queue with sla status, calculated on read because it depends on the current time
+-- BREACHED: past due (or closed late)
+-- AT_RISK: open and due in the next 24h
+-- ON_TRACK: everything else
 CREATE OR REPLACE VIEW v_request_queue AS
 SELECT
   r.*,

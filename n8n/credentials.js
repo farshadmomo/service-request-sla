@@ -1,6 +1,3 @@
-// Prints the n8n credentials as JSON for `n8n import:credentials` (run by n8n/import.sh).
-// Built from environment variables, so the secrets live only in .env, never in the repo.
-// The ids are the ones the exported workflows refer to; n8n encrypts the data on import.
 const { APP_DB_PASSWORD, N8N_WEBHOOK_SECRET } = process.env;
 if (!APP_DB_PASSWORD || !N8N_WEBHOOK_SECRET) {
   throw new Error('APP_DB_PASSWORD and N8N_WEBHOOK_SECRET must be set');
